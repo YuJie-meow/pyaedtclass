@@ -1,0 +1,27 @@
+from ansys.aedt.core import Hfss
+hfss = Hfss(version='2025.2')
+core_num = 1
+hfss['length'] = '20mm'
+c1= hfss.modeler.create_cylinder("z", (0,0,0.5),0.5,'length', material ='copper')
+c2= hfss.modeler.create_cylinder("z", (0,0,-0.5),0.5,'-length', material ='copper')
+
+
+rect = hfss.modeler.create_rectangle('YZ', (0,-0.5,-0.5),(1,1))
+hfss.lumped_port(rect,c2)
+hfss.create_open_region('2GHz')
+setup = hfss.create_setup('mysetup')
+
+setup.create_frequency_sweep('GHz',1,5,101,'mysweep')
+hfss.analyze(cores=core_num)
+
+data = hfss.post.get_solution_data('dB(S11)')
+y = data.data_real()
+x = data.primary_sweep_values
+
+import matplotlib.pyplot as plt
+plt.grid()
+plt.title('Dipole Antenna Return Loss')
+plt.xlabel('Freq(GHz)')
+plt.ylabel('Return loss')
+plt.plot(x,y)
+plt.savefig('c:/demo/s11.png')
