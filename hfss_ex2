@@ -1,0 +1,133 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Dec 17 14:29:01 2025
+
+@author: Student
+"""
+
+import tkinter as tk
+from tkinter import messagebox
+from PIL import Image, ImageTk
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+
+from ansys.aedt.core import Hfss
+
+
+IMAGE_PATH = "c:/demo/s11.png"
+
+
+def run_simulation():
+    try:
+        length_mm = float(length_entry.get())
+        core_num = int(core_entry.get())
+    except ValueError:
+        messagebox.showerror("Input Error", "Please enter valid numeric values.")
+        return
+
+    status_label.config(text="Running HFSS simulation...")
+    root.update_idletasks()
+
+    try:
+        # ================= HFSS SCRIPT =================
+        hfss = Hfss(version="2025.2", non_graphical=True, new_desktop=True)
+
+        hfss["length"] = f"{length_mm}mm"
+
+        c1 = hfss.modeler.create_cylinder(
+            "z", (0, 0, 0.5), 0.5, "length", material="copper"
+        )
+        c2 = hfss.modeler.create_cylinder(
+            "z", (0, 0, -0.5), 0.5, "-length", material="copper"
+        )
+
+        rect = hfss.modeler.create_rectangle("YZ", (0, -0.5, -0.5), (1, 1))
+        hfss.lumped_port(rect, c2)
+
+        hfss.create_open_region("2GHz")
+
+        setup = hfss.create_setup("mysetup")
+        setup.create_frequency_sweep("GHz", 1, 5, 101, "mysweep")
+
+        hfss.analyze(cores=core_num)
+
+        data = hfss.post.get_solution_data("dB(S11)")
+        y = np.array(data.data_real())
+        x = np.array(data.primary_sweep_values)
+
+        # ================= FIND RESONANT FREQUENCY =================
+        idx = np.argmin(y)
+        f_res = x[idx]
+        s11_min = y[idx]
+
+        # ================= PLOT =================
+        plt.figure(figsize=(6, 4))
+        plt.grid(True)
+        plt.title("Dipole Antenna Return Loss")
+        plt.xlabel("Frequency (GHz)")
+        plt.ylabel("Return Loss (dB)")
+        plt.plot(x, y, label="S11")
+        plt.scatter(f_res, s11_min, color="red")
+        plt.annotate(
+            f"Resonant Freq = {f_res:.2f} GHz",
+            xy=(f_res, s11_min),
+            xytext=(f_res + 0.2, s11_min + 5),
+            arrowprops=dict(arrowstyle="->"),
+        )
+        plt.legend()
+        plt.tight_layout()
+
+        os.makedirs(os.path.dirname(IMAGE_PATH), exist_ok=True)
+        plt.savefig(IMAGE_PATH)
+        plt.close()
+
+        hfss.release_desktop()
+
+        # ================= DISPLAY IMAGE =================
+        img = Image.open(IMAGE_PATH)
+        img = img.resize((550, 400), Image.LANCZOS)
+        img_tk = ImageTk.PhotoImage(img)
+
+        image_label.config(image=img_tk)
+        image_label.image = img_tk
+
+        status_label.config(
+            text=f"Done! Resonant Frequency: {f_res:.2f} GHz"
+        )
+
+    except Exception as e:
+        messagebox.showerror("Simulation Error", str(e))
+        status_label.config(text="Error occurred")
+
+
+# ================= TKINTER GUI =================
+root = tk.Tk()
+root.title("HFSS Dipole Antenna S11 Simulator")
+root.geometry("700x600")
+
+input_frame = tk.Frame(root)
+input_frame.pack(pady=10)
+
+tk.Label(input_frame, text="Length (mm):").grid(row=0, column=0, padx=5)
+length_entry = tk.Entry(input_frame, width=10)
+length_entry.insert(0, "20")
+length_entry.grid(row=0, column=1, padx=5)
+
+tk.Label(input_frame, text="Core Num:").grid(row=0, column=2, padx=5)
+core_entry = tk.Entry(input_frame, width=10)
+core_entry.insert(0, "1")
+core_entry.grid(row=0, column=3, padx=5)
+
+run_button = tk.Button(
+    root, text="Run Simulation", command=run_simulation, bg="lightgreen"
+)
+run_button.pack(pady=10)
+
+status_label = tk.Label(root, text="Idle", fg="blue")
+status_label.pack(pady=5)
+
+image_label = tk.Label(root)
+image_label.pack(pady=10)
+
+root.mainloop()
